@@ -13,6 +13,7 @@ import 'types/features.dart';
 
 typedef QRViewCreatedCallback = void Function(QRViewController);
 typedef PermissionSetCallback = void Function(QRViewController, bool);
+typedef QRScannedCallback = void Function(Barcode barcode);
 
 /// The [QRView] is the view where the camera
 /// and the barcode scanner gets displayed.
@@ -20,6 +21,7 @@ class QRView extends StatefulWidget {
   const QRView({
     @required Key key,
     @required this.onQRViewCreated,
+    this.onQRCodeScanned,
     this.overlay,
     this.overlayMargin = EdgeInsets.zero,
     this.cameraFacing = CameraFacing.back,
@@ -28,6 +30,8 @@ class QRView extends StatefulWidget {
   })  : assert(key != null),
         assert(onQRViewCreated != null),
         super(key: key);
+
+  final QRScannedCallback onQRCodeScanned;
 
   /// [onQRViewCreated] gets called when the view is created
   final QRViewCreatedCallback onQRViewCreated;
@@ -52,11 +56,15 @@ class QRView extends StatefulWidget {
   final List<BarcodeFormat> formatsAllowed;
 
   @override
-  State<StatefulWidget> createState() => _QRViewState();
+  State<StatefulWidget> createState() => _QRViewState(onQRCodeScanned);
 }
 
 class _QRViewState extends State<QRView> {
+
+  _QRViewState(this.onQRScanned);
+
   var _channel;
+  QRScannedCallback onQRScanned;
 
   @override
   Widget build(BuildContext context) {
@@ -132,8 +140,7 @@ class _QRViewState extends State<QRView> {
     _channel = MethodChannel('net.touchcapture.qr.flutterqr/qrview_$id');
 
     // Start scan after creation of the view
-    final controller = QRViewController._(
-        _channel, widget.key, cutOutSize, widget.onPermissionSet)
+    final controller = QRViewController._(_channel, widget.key, cutOutSize, widget.onPermissionSet,onQRScanned)
       .._startScan(widget.key, cutOutSize, widget.formatsAllowed);
 
     // Initialize the controller for controlling the QRView
@@ -159,7 +166,7 @@ class _QrCameraSettings {
 
 class QRViewController {
   QRViewController._(MethodChannel channel, GlobalKey qrKey, double scanArea,
-      PermissionSetCallback onPermissionSet)
+      PermissionSetCallback onPermissionSet, this.onScanned)
       : _channel = channel {
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -173,6 +180,7 @@ class QRViewController {
             final format = BarcodeTypesExtension.fromString(rawType);
             if (format != null) {
               final barcode = Barcode(code, format, rawBytes);
+              onScanned(barcode);
               _scanUpdateController.sink.add(barcode);
             } else {
               throw Exception('Unexpected barcode type $rawType');
@@ -195,7 +203,7 @@ class QRViewController {
       }
     });
   }
-
+  final QRScannedCallback onScanned;
   final MethodChannel _channel;
   final StreamController<Barcode> _scanUpdateController =
       StreamController<Barcode>();
